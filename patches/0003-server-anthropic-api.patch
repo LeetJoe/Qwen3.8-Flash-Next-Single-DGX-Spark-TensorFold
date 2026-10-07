@@ -75,7 +75,7 @@
                  "reasoning_tokens": reasoning_count(out, self.tok.token_to_id("</think>") if chat and thinking else None),
 --- /dev/null
 +++ tensorfold/server/anthropic.py
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,98 @@
 +"""Anthropic HTTP routes on both servers, over their own chat-completions handler and connection."""
 +from __future__ import annotations
 +
@@ -135,9 +135,6 @@
 +        raw = read_body(handler, limit=LIMIT)
 +        body = json.loads(raw or b"{}")
 +        chat = translate(body, count=count)
-+        late_system = getattr(app, "late_system", getattr(getattr(app, "template", None), "late_system", "system"))
-+        if late_system != "system" and any(m.get("role") == "system" for m in body["messages"]):
-+            raise RequestError("the model's chat template does not support mid-conversation system messages")
 +        if count:
 +            return _send(handler, 200, {"input_tokens": count_tokens(app, chat)})
 +    except (RequestError, ValueError, UnicodeDecodeError) as exc:
