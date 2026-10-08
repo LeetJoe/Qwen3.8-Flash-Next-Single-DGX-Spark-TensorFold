@@ -24,7 +24,7 @@ WORDS = ("time year people way day man thing woman life child world school state
          "president team minute idea kid body information back parent face others level office door health person "
          "art war history party result change morning reason research girl guy moment air teacher force education "
          "river mountain signal engine garden theory market winter method bridge letter window voice paper field").split()
-SIZES = [(1_000, 3), (4_000, 3), (16_000, 2), (64_000, 1)]      # (approx prompt tokens, runs)
+SIZES = [(8_000, 1), (16_000, 1), (32_000, 1), (64_000, 1), (128_000, 1)]
 
 
 def prose(tokens: int, seed: int) -> str:
@@ -48,7 +48,7 @@ def open_url(req: urllib.request.Request, timeout: float):
 
 
 def run(prompt: str, max_tokens: int, temperature=None) -> dict:
-    body = {"model": "Qwen3.8-Flash-Next", "stream": True, "max_tokens": max_tokens,
+    body = {"model": os.environ.get("MODEL", "Qwen3.8-Flash-Next"), "stream": True, "max_tokens": max_tokens,
             "stream_options": {"include_usage": True}, "messages": [{"role": "user", "content": prompt}]}
     if temperature is not None:
         body["temperature"] = temperature
