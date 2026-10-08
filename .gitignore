@@ -2,6 +2,7 @@
 work/
 scripts/local.sh
 .env
+.vscode
 .claude/
 AGENTS.md
 CLAUDE.md
