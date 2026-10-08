@@ -40,6 +40,10 @@ This repository is a thin layer of scripts and patches. Almost everything that m
   engine. Vision builds on the Qwen3.5/3.8 dense tower, Hugging Face transformers, and Qwen3-VL video processing.
   The v0.5.0 series and the v0.6.0 and v0.6.1 rebases are by MiaAI-Lab, developed with
   [Claude Code](https://claude.com/claude-code) and Cursor.
+- `0003-server-anthropic-api`: the Anthropic Messages frontend (`server/anthropic.py`, `server/anthropic_translate.py`,
+  `server/request_body.py` and `matched_stop`), backported from TensorFold v0.6.3 onto the pinned v0.6.1 by
+  **[LeetJoe](https://github.com/LeetJoe)** (this fork), Apache-2.0. `tools/test_anthropic_api.py` and
+  `tools/anthropiccheck.py` keep it honest.
 - `languages/0010-flash-next-draft-languages`: the language token lists come from
   **Javier ([jvr0x](https://github.com/jvr0x))**'s language draft vocabularies for this model's vLLM recipe
   ([MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark#84](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark/pull/84)),
@@ -52,7 +56,7 @@ This repository is a thin layer of scripts and patches. Almost everything that m
   libraries. Governed by the NVIDIA Software License Agreement and the Product-Specific Terms for NVIDIA AI Products;
   see the README's License section.
 - **[PyTorch](https://pytorch.org/)** (BSD-3-Clause): tensors, CUDA streams and the C++ extension builder that compiles
-  the native n-gram reader in patch 0003.
+  the native n-gram reader (patch 0002).
 - **[Triton](https://github.com/triton-lang/triton)** (MIT): the language most of TensorFold's Flash Next CUDA kernels,
   and TensorFold's tiled attention-block select, are written in.
 - **[NumPy](https://numpy.org/)** (BSD-3-Clause): the host-side n-gram lookups and read planning, and video patches.

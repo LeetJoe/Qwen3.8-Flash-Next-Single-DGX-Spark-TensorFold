@@ -11,13 +11,16 @@ Serve **Qwen3.8 Flash Next** from a single NVIDIA DGX Spark (GB10, 128 GB) throu
 **5 concurrent requests at the full 262,144-token context** and **image and video input**. It runs
 [TensorFold](https://github.com/ashhart/TensorFold) v0.6.1 (`17c73e1`) in NVIDIA's PyTorch container, plus
 `patches/0002-flash-next-v061.patch` (video input and many images on TensorFold's Flash Next vision, copy drafts,
-SSD read-ahead, first token before the next draft).
+SSD read-ahead, first token before the next draft) and `patches/0003-server-anthropic-api.patch` (the Anthropic
+Messages API on top of the OpenAI one).
 
 - Checkpoint: [`Vontra/Qwen3.8-Flash-Next-MLX-4bit-MTP`](https://huggingface.co/Vontra/Qwen3.8-Flash-Next-MLX-4bit-MTP)
   (MLX 4-bit, group size 32, with the MTP draft head)
 - API model id: `Qwen3.8-Flash-Next`
 - KV pool: **1,310,720 tokens** (5 streams x 262,144, int8 KV cache, ~23.4 GiB), 25% more than 4 streams
 - Images and videos in chat messages (`image_url` / `video_url` parts), see [Images and video](#images-and-video)
+- **Anthropic Messages API** on `/v1/messages` (streaming, tools, thinking and images included), so Claude Code and
+  other Anthropic clients can be pointed straight at it, see [Anthropic Messages API](#anthropic-messages-api)
 - One command: `./start.sh` sets everything up on the first run and starts the server; `./stop.sh` stops it
 
 ## Performance
@@ -133,6 +136,36 @@ By default only data URLs are accepted; `VISION_URLS=1` also lets the server fet
 and video prompts are not kept for prefix reuse, so each turn of a chat with images processes them again. A request
 body can be up to 96 MiB (base64 makes data URLs a third larger than the files). Text requests are unaffected:
 their replies stay byte-identical with vision on. `VISION=0 ./start.sh restart` serves text only.
+
+## Anthropic Messages API
+
+Besides the OpenAI endpoints, the server answers the Anthropic Messages shape on `/v1/messages` and `/messages`
+(both also under `/count_tokens`), which is what Claude Code and other Anthropic clients speak.
+`patches/0003-server-anthropic-api.patch` backports that frontend from TensorFold v0.6.3 onto this TensorFold pin.
+It is a translating frontend, not another engine: a Messages body is translated onto the server's own chat path and
+answered in the Messages shape, so sampling, drafting and prefix reuse behave exactly as through
+`/v1/chat/completions`. A Messages body can be at most 32 MiB (the chat endpoints take 96 MiB).
+
+```bash
+curl -s http://<spark-address>:8888/v1/messages -H 'Content-Type: application/json' -d '{
+  "model": "Qwen3.8-Flash-Next", "max_tokens": 1000,
+  "messages": [{"role": "user", "content": "Write a Python fibonacci function."}]
+}'
+```
+
+For Claude Code, set `ANTHROPIC_BASE_URL` (its own or the proxy's) to `http://<spark-address>:8888` and the model
+to `Qwen3.8-Flash-Next`.
+
+In a Messages body `max_tokens` is required, except on `/count_tokens`, which only renders the prompt (same
+tokenizer, tools and thinking controls as a real run, without running generation) and answers `{"input_tokens": …}`.
+`stream: true` replies in Anthropic's SSE events; replies carry `stop_reason`, `stop_sequence` and Anthropic's
+`usage` (`input_tokens` + `cache_read_input_tokens` = the prompt). Accepted: system turns as a string or text blocks
+(`cache_control` ignored), `image` blocks (base64 or URL, the same formats as above), `tools` with `input_schema`
+and `tool_choice`, `stop_sequences`, `thinking` (`disabled` by default, `enabled` with a `budget_tokens` under
+`max_tokens`, or `adaptive`), `context_management` (only `clear_thinking` with `keep: "all"`, which is what Claude
+Code sends), and `output_config` (`effort`, `format` with a `json_schema`). Refused: `redacted_thinking` (a local
+model has no server-side encrypted signatures to replay), server-side tool types, and non-empty `container`,
+`mcp_servers` or `service_tier`.
 
 ## Other languages
 
@@ -325,6 +358,7 @@ applied with `patch -p0`), and `start.sh` rebuilds or re-pulls the image by itse
 | Patch | Change |
 | --- | --- |
 | `0002-flash-next-v061` | Flash Next on v0.6.1: video input and up to 50 images sharing 16,384 tokens on top of TensorFold's own Flash Next image input (which came from this recipe's v0.6.0 vision patch), copy drafts with compact MTP rows, a `TENSORFOLD_PREFILL_ROWS` override, SSD read-ahead around the n-gram table, first token before the next draft, no unused MTP logits while prompts absorb, 96 MiB request bodies. Percentage effects in older notes were measured on v0.5.0, not on this pin. |
+| `0003-server-anthropic-api` | Anthropic Messages API on top of the OpenAI one: `/v1/messages` and `/messages`, each also with `/count_tokens`, as a translating frontend over the chat-completions handler (backported from TensorFold v0.6.3 onto this pin). Also: a 32 MiB cap on request bodies at those routes, and the matched stop sequence reported on every reply (`stop_sequence`). |
 | `languages/0010-flash-next-draft-languages` | Opt-in language image only (`DRAFT_LANGUAGE`): language draft vocabularies for the MTP head. |
 
 v0.6.1 brings, upstream: shared system prompts copied into a free stream instead of filled again (measured here: a 31k-token system prompt answered a new question in 0.18 s instead of 14 s), forks that resume from the shared prefix, short prompts admitted while a long one fills, `--vision-max-images`, vLLM-named `/metrics`, and the fix for a refused request breaking the next one on its connection. Its startup reserve is `TENSORFOLD_MEMORY_RESERVE_GIB` (this recipe sets 2). Live `/health` counters, stream draft stats, and tiled QSA selection landed in v0.5.0.
@@ -334,22 +368,27 @@ samples, and the prefill changes read the same bytes and select the same attenti
 comparing reply hashes (sampled and greedy, prompts up to 149k tokens) against unpatched TensorFold, with vision on
 and off, and with a ~195k-token needle-in-a-haystack test. Text rows take exactly the rotary path they always did;
 on image and video prompts, drafted replies equal the serial reference too. Any request can also be sent with
-`"draft": false` to get TensorFold's serial, one-token-at-a-time reference.
+`"draft": false` to get TensorFold's serial, one-token-at-a-time reference. 0003 changes generation in neither
+direction either: it translates onto the same chat path, so what a reply says is unchanged, and a `/v1/messages`
+reply can be checked against the same request sent as a chat completion (`tools/anthropiccheck.py` does).
 
 ## Checks
 
-The scripts in `tools/` talk to the running server (`API_URL`, default `http://127.0.0.1:8888`; or just `PORT`),
-from this machine or another one (`API_URL=http://<spark-address>:8888 tools/bench.py`).
-`tools/test_copy_draft_rows.py` is the exception: it exercises patched TensorFold source on the CPU.
+The scripts in `tools/` mostly talk to the running server (`API_URL`, default `http://127.0.0.1:8888`; or just
+`PORT`), from this machine or another one (`API_URL=http://<spark-address>:8888 tools/bench.py`). The `test_*`
+scripts are the exception: they exercise patched TensorFold source on the CPU (`TF_SRC` pointing at the patched
+`src`, no model and no server).
 
 | Script | What it does |
 | --- | --- |
 | `tools/bench.py [label]` | smoke: prefill at ~0.85k / 3.2k / 12.6k / 50k tokens (fresh random prompts) and a short decode check. `--suite --seed 1 --jsonl run.jsonl --clients 1,2,4,5` is the concurrent, fixed-seed driver |
 | `tools/test_copy_draft_rows.py` | mixed copy/MTP proposal-row ownership (needs `TF_SRC` pointing at patched TensorFold `src`; no model) |
 | `tools/test_astra_patches.py` | first-token-before-draft, MTP absorb-without-head, PLE concat, native worker counts (`TF_SRC`) |
+| `tools/test_anthropic_api.py` | the patch-0003 frontend, on the CPU: Messages→chat translation (system, images, tool history, thinking, refusals), streamed and non-streamed reply shapes, request framing, matched stops (`TF_SRC`; no model) |
 | `tools/needle.py` | hides a passphrase in a ~195k-token prompt and checks the model returns it |
 | `tools/toolcheck.py` | makes a tool call with an array parameter and checks it comes back as a JSON array |
 | `tools/visioncheck.py` | sends a drawn image (a red circle and a blue square) and checks the model names both |
+| `tools/anthropiccheck.py` | `/v1/messages` and `/count_tokens` against the running server: text and tool round trips (streamed and not), a consumed stop sequence, and that `count_tokens` counts exactly what a real run would |
 
 ## Repository layout
 

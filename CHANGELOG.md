@@ -7,6 +7,19 @@ release ends at is given, and the prebuilt images are
 
 ## [Unreleased]
 
+### Added
+
+- Anthropic Messages API (`patches/0003-server-anthropic-api`): `/v1/messages` and `/messages` beside the OpenAI
+  endpoints, with `/count_tokens` on both — the translating frontend backported from TensorFold v0.6.3 onto the
+  pinned v0.6.1, so Claude Code and other Anthropic clients can be pointed straight at the server. It is a
+  frontend, not an engine change: replies come off the same chat path, and `/v1/messages` bodies are capped at
+  32 MiB (the chat endpoints take 96 MiB).
+- `tools/test_anthropic_api.py`: CPU checks for the new frontend (translation, reply shapes, request framing,
+  matched stops) against a patched TensorFold `src` through `TF_SRC`, no model and no server needed.
+- `tools/anthropiccheck.py`: the same round trips against a running server (`API_URL`, as in `tools/bench.py`):
+  text and tool round trips (streamed and not), a consumed stop sequence, and `count_tokens` matching the prompt
+  tokens a real run renders.
+
 ## [0.6.0] - 2026-10-02
 
 Commit `22a3010` (#13). Images unchanged from 0.5.0.
