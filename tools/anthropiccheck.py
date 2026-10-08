@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Anthropic Messages API (patch 0003) against the running server.
+"""The Anthropic Messages API (patch 0010) against the running server.
 
 Posts to /v1/messages and /v1/messages/count_tokens and checks the answers against the Messages shape,
 streamed and not, and compares against the OpenAI endpoint where the two must agree. Complements
@@ -107,7 +107,7 @@ def main() -> None:
                  f"{kinds[:3]}…{kinds[-2:]} args {args[:80]!r}"):
         failed += 1
 
-    # 5. stop sequences: if the model repeats the stop, it must be consumed and reported (patch 0003's
+    # 5. stop sequences: if the model repeats the stop, it must be consumed and reported (patch 0010's
     #    matched_stop); a reply that never reaches the stop still has to answer 200
     status, reply = post(MESSAGES, {"model": MODEL, "max_tokens": 64, "temperature": 0,
                                    "stop_sequences": ["WORLD"],

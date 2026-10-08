@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks for patch 0003 (the Anthropic Messages frontend) against the patched source, with no model and no server.
+"""Checks for patch 0010 (the Anthropic Messages frontend) against the patched source, with no model and no server.
 
 They drive the four pieces the patch adds on the CPU: `translate` (a Messages body becomes the server's chat
 request), `Reply` (chat chunks become Messages blocks), `read_body` (the bounded request framing) and
@@ -8,7 +8,7 @@ patched image and post `/v1/messages` too when you have a machine with the model
 
 Usage: TF_SRC=/path/to/patched/src python3 tools/test_anthropic_api.py
 
-TF_SRC is TensorFold's `src` directory with this recipe's patches applied (0003 adds the four modules).
+TF_SRC is TensorFold's `src` directory with this recipe's patches applied (0010 adds the four modules).
 Exit code 1 on any failed check.
 """
 from __future__ import annotations
@@ -407,7 +407,7 @@ def test_read_body() -> None:
 def main() -> int:
     src = _src()
     if not (src / "tensorfold" / "server" / "anthropic.py").is_file():
-        sys.exit(f"{src} has no server/anthropic.py: apply patches/0003-server-anthropic-api.patch first")
+        sys.exit(f"{src} has no server/anthropic.py: apply patches/0010-server-anthropic-api.patch first")
     sys.path.insert(0, str(src))
     failed = 0
     for name, fn in (
