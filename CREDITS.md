@@ -76,7 +76,7 @@ This recipe no longer applies those patches (the serving path is the Zig engine)
 - `0002`-`0005`, `0007`-`0009`: by MiaAI-Lab, developed with [Claude Code](https://claude.com/claude-code).
 - FP8 KV (`KV_DTYPE=fp8`) is adapted from MiaAI-Lab's GLM recipe patch `0038-glm-kv-fp8` in
   [GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold).
-- `0003-server-anthropic-api`: the Anthropic Messages frontend (`server/anthropic.py`, `server/anthropic_translate.py`,
+- `0010-server-anthropic-api`: the Anthropic Messages frontend (`server/anthropic.py`, `server/anthropic_translate.py`,
   `server/request_body.py` and `matched_stop`), backported from TensorFold v0.6.3 onto the pinned v0.6.1 by
   **[LeetJoe](https://github.com/LeetJoe)** (this fork), Apache-2.0. `tools/test_anthropic_api.py` and
   `tools/anthropiccheck.py` keep it honest.

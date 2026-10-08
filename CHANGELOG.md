@@ -66,7 +66,7 @@ Sequence memory on that boot was 33.28 GiB. The README's current tables are the 
 
 ### Added
 
-- Anthropic Messages API (`patches/0003-server-anthropic-api`): `/v1/messages` and `/messages` beside the OpenAI
+- Anthropic Messages API (`patches/0010-server-anthropic-api`): `/v1/messages` and `/messages` beside the OpenAI
   endpoints, with `/count_tokens` on both — the translating frontend backported from TensorFold v0.6.3 onto the
   pinned v0.6.1, so Claude Code and other Anthropic clients can be pointed straight at the server. It is a
   frontend, not an engine change: replies come off the same chat path, and `/v1/messages` bodies are capped at

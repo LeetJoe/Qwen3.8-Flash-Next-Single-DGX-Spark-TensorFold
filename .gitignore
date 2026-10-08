@@ -3,6 +3,7 @@ work/
 scripts/local.sh
 .env
 .claude/
+.vscode/
 AGENTS.md
 CLAUDE.md
 # agent handoffs, prompts, notes and scratch
