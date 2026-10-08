@@ -20,6 +20,72 @@ SSD read-ahead, first token before the next draft).
 - Images and videos in chat messages (`image_url` / `video_url` parts), see [Images and video](#images-and-video)
 - One command: `./start.sh` sets everything up on the first run and starts the server; `./stop.sh` stops it
 
+## What's new in this fork
+
+This fork keeps the upstream recipe's serving behaviour intact and adds two things, both wired through the environment
+and a new start script, **`start_nohf.sh`** (a variant of `start.sh` that takes the model from a plain weight directory
+rather than a Hugging Face cache, and reads its settings from a `.env` file). Everything else — the default image, the
+checks, the monitoring — is as upstream; use `./start_nohf.sh` in place of `./start.sh` (`./stop.sh` still stops it).
+
+### Local weights, with no Hugging Face cache
+
+Upstream expects the checkpoint in a Hugging Face cache layout — `hub/models--<org>--<repo>/snapshots/<revision>` under
+`HF_CACHE` — and `scripts/prepare.sh` fills that layout with its download. `start_nohf.sh` instead points the container
+at a **plain directory** under the cache mount, at `/root/.cache/huggingface/$MODEL_SUB_FOLDER` (host path
+`$HF_CACHE/$MODEL_SUB_FOLDER`), and it drops `start.sh`'s check for that layout, so weights fetched with
+`hf download --local-dir` (or laid out any other way) serve as-is: no dependency on the snapshots-and-blobs structure,
+and no pinned revision to resolve.
+
+Where the reference recipe kept its per-machine settings in `scripts/local.sh`, this fork keeps them in **`.env`** — a
+`KEY=value` file beside `start.sh`, read (never run) by `scripts/config.sh`. The priority is the same as upstream's:
+the first that sets a value wins, the environment then `.env` then the default; `.env` is yours, not the repository's.
+The four settings `start_nohf.sh` needs are in it:
+
+```dotenv
+HF_CACHE=/path/to/models                      # the directory mounted at /root/.cache/huggingface in the container
+MODEL_SUB_FOLDER=Qwen3.8-Flash-Next-MLX-4bit-MTP   # the checkpoint directory, directly under that mount
+PREPARE=0                                     # scripts/prepare.sh expects the cache layout; leave it to do nothing
+DRAFT_LANGUAGE=zh                             # optional: the language image (zh or ja), empty for the default
+```
+
+Fetch the checkpoint into that layout, then start with `./start_nohf.sh`:
+
+```bash
+hf download Vontra/Qwen3.8-Flash-Next-MLX-4bit-MTP --local-dir "$HF_CACHE/$MODEL_SUB_FOLDER"
+./start_nohf.sh                               # or ./start_nohf.sh restart
+```
+
+`start_nohf.sh` passes that directory to the server as-is and resolves no revision, so the directory has to hold a
+complete, loadable checkpoint before the start: an empty or partial one fails when the model loads, not at the checks.
+`MODEL_SUB_FOLDER` is the directory it serves and `DRAFT_LANGUAGE` names the default or language image, so the first
+`./start_nohf.sh` builds that image (a few minutes) and later starts load the ~103 GiB of weights in ~2.5 minutes.
+
+### Anthropic `/v1/messages`
+
+The TensorFold pin this recipe runs has no Anthropic `/v1/messages`; this fork backports the Messages API onto it as a
+translating frontend over the chat-completions handler, so `/v1/messages` answers in Anthropic's shape (streaming, tools,
+thinking and images included) and sampling, drafting and prefix reuse behave as they do on the OpenAI endpoints.
+
+To serve `/v1/messages` you have to **build the image yourself**: the published image, and the ones `./start.sh` and
+`./start_nohf.sh` pull from GHCR by default, have no Anthropic endpoint, and neither start script builds a patched
+image on its own. Do the build on the **`main_dev`** branch — where the Anthropic backport lives
+(`0003-server-anthropic-api.patch`, with `tools/anthropiccheck.py` and `tools/test_anthropic_api.py`) and, because GHCR
+publishes no `/v1/messages` image, `scripts/prepare.sh` builds it locally (`PULL=0`). `main_dev` serves through
+`./start.sh` (it has no `start_nohf.sh`); this branch (`main_neo`) keeps `start_nohf.sh` and `docs/chat_template.jinja`
+but not the patch, and `PREPARE=0` in `.env` skips the setup, so `start_nohf.sh` will not build that image for you. To
+use it here, build the Anthropic image on `main_dev`, then name it in `.env` (`TF_VERSION`, `IMAGE`) to serve it
+through `start_nohf.sh`.
+
+The backend (TensorFold's route) refused `system` role messages that arrived **mid-conversation** — one sent as
+`{"role": "system", ...}` partway through `messages`, which is what Claude Code and some agents send, rather than in
+the top-level `system` field — and this fork relaxes that to answer the request. By default such a message is not sent
+to the model as a system instruction but **repackaged as an ordinary `user` turn**, so a client that keeps putting
+`system` messages mid-conversation gets an answer instead of an error, and the request is not refused for that alone.
+For **full support**, replace the weight directory's `chat_template.jinja` with this repo's `docs/chat_template.jinja`
+(under `start_nohf.sh`, `$HF_CACHE/$MODEL_SUB_FOLDER/chat_template.jinja`) and restart the container (`./stop.sh` and
+`./start_nohf.sh` again); the template is read as the model loads, so a restart is what picks it up (verified against
+live traffic, with mid-conversation `system` messages).
+
 ## Performance
 
 One DGX Spark, the recipe's defaults on TensorFold v0.6.1 (5 streams x 262,144, int8 KV cache, n-gram tables read
