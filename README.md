@@ -339,6 +339,40 @@ that fills that window also needs prefill scratch, which the engine's budget doe
 `prepare.sh` and `start.sh` refuse to run when `MemAvailable` is under 10 GiB (`MEM_FLOOR_GIB`). Keep at least 10 GiB
 free under load. On this machine, exhausting unified memory freezes it.
 
+### Kernel `NV_ERR_NO_MEMORY` messages under load (issue #33)
+
+Under a long mixed load, stock 1.0.0 can log `NV_ERR_NO_MEMORY ... _memdescAllocInternal` in the kernel log while
+`MemAvailable` stays above 30 GiB. No request fails. On a GB10 (driver 580.173.02, kernel 6.17.0-1029-nvidia), with
+8 clients for 45 minutes, a ~62k-token prompt every fifth request and images every seventh, stock logged 103 and 90
+in two runs. A trace put 108 of 115 inside the ~28 MiB `cuMemCreate` calls that grow a kept ~62k-token state.
+
+`patches/0010-system-memory-cache.patch` is an opt-in mitigation. It is off unless set:
+
+- `TF_FLASHNEXT_SYSTEM_CACHE=1` backs the K/V caches, fixed sequence state and snapshots with locked, ordinary
+  system memory registered with CUDA (`cuMemHostRegister`), instead of new driver allocations. It needs Linux, one
+  GPU (TP=1), VMM and an integrated GPU with pageable memory access, and refuses to start otherwise. `start.sh`
+  already runs the container with `--ulimit memlock=-1`.
+- `TF_FLASHNEXT_RING_CACHE=1` (with the above) also reuses whole retired indexer-ring regions, capped at 64 MiB
+  physical, 32 entries and 1 GiB of addresses.
+
+```bash
+TF_FLASHNEXT_SYSTEM_CACHE=1 TF_FLASHNEXT_RING_CACHE=1 ./start.sh
+```
+
+Same load, two 45-minute runs each:
+
+| build | messages | requests / errors | tok/s | p50 / p95 (s) |
+| --- | ---: | ---: | ---: | ---: |
+| stock | 103, 90 | 580 / 0 | 62.3, 62.9 | 80.7 / 99.4, 80.7 / 97.9 |
+| `SYSTEM_CACHE=1` | 0, 10 | 578 / 0 | 62.6, 62.5 | 81.6 / 95.3, 81.1 / 100.1 |
+| `SYSTEM_CACHE=1 RING_CACHE=1` | 0, 2 | 580 / 0 | 62.5, 62.3 | 82.9 / 91.7, 81.1 / 94.7 |
+
+The prompt cache budget and peak (8,370 MiB, eight states) are unchanged. Greedy replies matched stock on seven
+cases, including two ~62k passphrases, prompt-cache repeat and extension, eviction and images. Two runs per build
+show no large speed change, not equality. The exact driver allocation behind the remaining messages is not
+identified. Untested: TP=2, other GPUs, other context sizes, long production soaks. `--prompt-cache-gib 2` without
+the patch gave 38 in one run.
+
 ## Configuration
 
 Every setting lives in [`scripts/config.sh`](scripts/config.sh). Override it from the environment

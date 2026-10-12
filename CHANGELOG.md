@@ -3,6 +3,21 @@
 Newest first. This recipe serves one DGX Spark. The image is `tensorfold-qwen38:zig-db28187`, built by
 `scripts/prepare.sh` from TensorFold `db281878` plus `patches/`.
 
+## Unreleased
+
+Script and tool fixes only; the image and `patches/` are unchanged.
+
+- `start.sh` reads `MemAvailable` from `/proc/meminfo`. It used `free -g | awk '/^Mem:/'`, which came back empty on
+  non-English systems (`Speicher:`, `内存：`) and refused to start. Reported by
+  [shuaixn](https://github.com/shuaixn) (#37) and [Siphi1239](https://github.com/Siphi1239) (#39). Test:
+  `tools/test_start_meminfo.py`.
+- `tools/bench.py` reads the 1.0.0 stream stats (`usage` arrives in its own chunk; `prefill_seconds`,
+  `tokens_per_second`, `usage.prompt_tokens_details.cached_tokens`) and keeps the 0.6.x names as a fallback. Its
+  prompt-cache guard defaulted to 0 and no longer passed for the right reason. Reported by
+  [naeemakhtar110](https://github.com/naeemakhtar110) (#38). Test: `tools/test_bench_stats.py`.
+- The ready summary of `start.sh` names the KV cache type in use (it always said `bf16 KV`). Authored by
+  [mcclanahanaman](https://github.com/mcclanahanaman) (#51).
+
 ## [1.0.0] - 2026-10-08
 
 TensorFold's Zig engine (`tensorfold-native`, TP=1). Engine `37763df`, merged into `zig-single` as `453439d`

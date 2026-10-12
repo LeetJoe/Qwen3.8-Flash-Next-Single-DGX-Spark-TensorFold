@@ -154,7 +154,7 @@ if ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN; then
     die "port $PORT is already in use: $(ss -ltnp "sport = :$PORT" 2>/dev/null | tail -n +2)"
 fi
 need_gib=${MEM_NEED_GIB:-$(mem_need_gib "$(arg_value --context)")}
-avail_gb=$(free -g | awk '/^Mem:/ {print $7}')
+avail_gb=$(awk '/^MemAvailable:/ {print int($2 / 1048576)}' /proc/meminfo)   # not free(1): its row labels are translated
 if (( avail_gb >= need_gib )); then
   log "Arguments OK, port $PORT free, ${avail_gb} GiB memory available (this window needs ~$need_gib at start)"
 else
@@ -252,7 +252,7 @@ cat <<EOF
     API      http://${IP:-<spark-address>}:$PORT/v1   (model: $SERVED)
     Loaded   in ${LOADED_S}s · ${avail_gb} GiB was free
     Model    $MODEL_ID @ ${MODEL_REVISION:0:8} ($QUANT_LABEL)
-    Window   $(arg_value --context) tokens$( [[ "$TF_FLASHNEXT_YARN" != 0 ]] && echo " (YaRN x$TF_FLASHNEXT_YARN)") · $(arg_value --parallel) at once · bf16 KV · drafts $( [[ "$DRAFTS" == 1 ]] && echo MTP || echo off)
+    Window   $(arg_value --context) tokens$( [[ "$TF_FLASHNEXT_YARN" != 0 ]] && echo " (YaRN x$TF_FLASHNEXT_YARN)") · $(arg_value --parallel) at once · $KV_DTYPE KV · drafts $( [[ "$DRAFTS" == 1 ]] && echo MTP || echo off)
     Logs     docker logs -f $CONTAINER_NAME
     Restart  ./start.sh restart
     Stop     ./stop.sh
